@@ -5,6 +5,11 @@
 #include <vector>
 #include <string>
 #include "Game.h"
+#include <process.h>
+#include <Windows.h>
+#include <tchar.h>
+//#include "boost\program_options\parsers.hpp"
+#include <fstream>
 
 using namespace ci;
 using namespace ci::app;
@@ -20,6 +25,7 @@ class DAMEAppApp : public AppBasic {
 	void draw();
 	void drawGrid();
 	void drawLine();
+	void runSelectedGame();
 
 	Vec3f cameraPosition;
 	int currentGameIndex;
@@ -27,11 +33,14 @@ class DAMEAppApp : public AppBasic {
 	vector<string> gameNames;
 	vector<string> gameTitles;
 	vector<Game> games;
+
+	//boost::program_options::basic_parsed_options<wchar_t> configOptions;
 };
 
 void DAMEAppApp::prepareSettings( Settings *settings )
 {
 	settings->setFullScreen(true);
+	//settings->setWindowSize(800, 600);
 	settings->setFrameRate( 60.0f );
 }
 
@@ -134,6 +143,12 @@ void DAMEAppApp::setup()
 	cameraPosition = games[0].getPosition() + Vec3f(games[0].getImageWidth()/2, games[0].getImageHeight()/2, 0);
 
 	currentGameIndex = 0;
+
+	// Load mame path and mame rom path
+	//ifstream file;
+    //file.open("config.ini");
+	//boost::program_options::options_description description;
+	//boost::program_options::parse_config_file(file, description, false);
 }
 
 void DAMEAppApp::mouseDown( MouseEvent event )
@@ -147,6 +162,8 @@ void DAMEAppApp::keyDown( KeyEvent event ) {
 		currentGameIndex++;
 	} else if(event.getCode() == KeyEvent::KEY_LEFT){
 		currentGameIndex--;
+	} else if(event.getCode() == KeyEvent::KEY_RETURN){
+		runSelectedGame();
 	}
 
 	if(currentGameIndex < 0){
@@ -169,6 +186,7 @@ void DAMEAppApp::draw()
 	drawLine();
 }
 
+// Not currently used, but I left it here in case I wanted to go back to it at some point
 void DAMEAppApp::drawGrid()
 {
 	gl::clear( Color( 0, 0, 0 ), true );
@@ -217,6 +235,50 @@ void DAMEAppApp::drawLine(){
 	}
 
 	gl::popMatrices();
+}
+
+void DAMEAppApp::runSelectedGame(){
+	console() << endl << endl << endl;
+	STARTUPINFO si;
+    PROCESS_INFORMATION pi;
+
+    ZeroMemory( &si, sizeof(si) );
+    si.cb = sizeof(si);
+    ZeroMemory( &pi, sizeof(pi) );
+
+    // Start the child process. 
+	std::wstring mame = _T("C:\\Users\\Dave\\Desktop\\HyperSpin\\Emulators\\MAME\\mame.exe -rompath C:\\Users\\Dave\\Desktop\\HyperSpin\\Emulators\\MAME\\roms mk");
+
+	// We have to drop out of full screen to run mame
+	setFullScreen(false);
+	setWindowSize(800, 600);
+
+    if( !CreateProcess(NULL,    // Use the command line
+        &mame[0],			    // Command line
+        NULL,					// Process handle not inheritable
+        NULL,					// Thread handle not inheritable
+        FALSE,					// Set handle inheritance to FALSE
+        0,						// No creation flags
+        NULL,					// Use parent's environment block
+        NULL,					// User parent's directory
+        &si,					// Pointer to STARTUPINFO structure
+        &pi )					// Pointer to PROCESS_INFORMATION structure
+    ) 
+    {
+        console() << "CreateProcess failed: " << GetLastError() << endl << endl;
+		return;
+    } else {
+		console() << "Created process, you should see mame right now" << endl;
+	}
+
+    // Wait until child process exits.
+    WaitForSingleObject( pi.hProcess, INFINITE );
+
+    // Close process and thread handles. 
+    CloseHandle( pi.hProcess );
+    CloseHandle( pi.hThread );
+
+	setFullScreen(true);
 }
 
 CINDER_APP_BASIC( DAMEAppApp, RendererGl )
