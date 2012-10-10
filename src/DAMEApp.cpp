@@ -2,18 +2,25 @@
 #include "cinder/gl/gl.h"
 #include "cinder/ImageIO.h"
 #include "cinder/gl/Texture.h"
+#include "Game.h"
+
 #include <vector>
 #include <string>
-#include "Game.h"
+#include <tchar.h>
+#include <sstream>
+#include <fstream>
+
 #include <process.h>
 #include <Windows.h>
-#include <tchar.h>
-//#include "boost\program_options\parsers.hpp"
-#include <fstream>
+
+#include "boost\program_options\parsers.hpp"
+#include "boost\program_options\variables_map.hpp"
+
 
 using namespace ci;
 using namespace ci::app;
 using namespace std;
+namespace po = boost::program_options;
 
 class DAMEAppApp : public AppBasic {
   public:
@@ -34,7 +41,8 @@ class DAMEAppApp : public AppBasic {
 	vector<string> gameTitles;
 	vector<Game> games;
 
-	//boost::program_options::basic_parsed_options<wchar_t> configOptions;
+	string mamePath;
+	string romPath;
 };
 
 void DAMEAppApp::prepareSettings( Settings *settings )
@@ -145,10 +153,19 @@ void DAMEAppApp::setup()
 	currentGameIndex = 0;
 
 	// Load mame path and mame rom path
-	//ifstream file;
-    //file.open("config.ini");
-	//boost::program_options::options_description description;
-	//boost::program_options::parse_config_file(file, description, false);
+	po::variables_map configOptions;
+	// Setup options.
+	po::options_description desc("Options");
+	desc.add_options()
+		("mamePath", po::value< std::string >( &mamePath ), "mamePath" )
+		("romPath", po::value< std::string >( &romPath ), "romPath");
+
+	std::ifstream settings_file( "settings.ini" );
+	po::store( po::parse_config_file( settings_file , desc ), configOptions );
+	settings_file.close();
+	po::notify( configOptions );
+
+	console() << endl << endl << "MAME Path: " << mamePath << endl << endl;
 }
 
 void DAMEAppApp::mouseDown( MouseEvent event )
@@ -247,7 +264,9 @@ void DAMEAppApp::runSelectedGame(){
     ZeroMemory( &pi, sizeof(pi) );
 
     // Start the child process. 
-	std::wstring mame = _T("C:\\Users\\Dave\\Desktop\\HyperSpin\\Emulators\\MAME\\mame.exe -rompath C:\\Users\\Dave\\Desktop\\HyperSpin\\Emulators\\MAME\\roms mk");
+	wstringstream ss;
+	ss << mamePath.c_str() << "/mame.exe -rompath " << romPath.c_str() << " mk";
+	wstring mame = ss.str();
 
 	// We have to drop out of full screen to run mame
 	setFullScreen(false);
