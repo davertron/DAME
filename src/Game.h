@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "cinder/gl/Texture.h"
+#include "cinder/Font.h"
 
 using namespace ci;
 using namespace std;
@@ -13,6 +14,7 @@ private:
 	gl::Texture image;
 	Vec3f position;
 	gl::Texture renderedTitle;
+	Font titleFont;
 public:
 	Game(void);
 	Game(string url);

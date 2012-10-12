@@ -105,10 +105,12 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\src\DAMEApp.cpp" />
+    <ClCompile Include="..\src\DAMECamera.cpp" />
     <ClCompile Include="..\src\Game.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\Resources.h" />
+    <ClInclude Include="..\src\DAMECamera.h" />
     <ClInclude Include="..\src\Game.h" />
   </ItemGroup>
   <ItemGroup>

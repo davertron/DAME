@@ -3,6 +3,8 @@
 #include "cinder/ImageIO.h"
 #include "cinder/gl/Texture.h"
 #include "Game.h"
+#include "DAMECamera.h"
+//#include "Resources.h"
 
 #include <vector>
 #include <string>
@@ -34,8 +36,9 @@ class DAMEAppApp : public AppBasic {
 	void drawLine();
 	void runSelectedGame();
 
-	Vec3f cameraPosition;
+	DAMECamera camera;
 	int currentGameIndex;
+	double lastFrameTime;
 
 	vector<string> gameNames;
 	vector<string> gameTitles;
@@ -145,10 +148,11 @@ void DAMEAppApp::setup()
 			xPosition = -1*games[i].getImage().getWidth() / 2;
 		}
 		games[i].setPosition(Vec3f(xPosition, -1 * games[i].getImage().getHeight() / 2, 0));
+		//games[i].setTitleFont(Font( loadResource( RES_CHUNKFIVE_FONT ), 48));
 		games[i].setTitle(gameTitles[i]);
 	}
 
-	cameraPosition = games[0].getPosition() + Vec3f(games[0].getImageWidth()/2, games[0].getImageHeight()/2, 0);
+	camera = DAMECamera(games[0].getPosition() + Vec3f(games[0].getImageWidth()/2, games[0].getImageHeight()/2, 0));
 
 	currentGameIndex = 0;
 
@@ -165,7 +169,7 @@ void DAMEAppApp::setup()
 	settings_file.close();
 	po::notify( configOptions );
 
-	console() << endl << endl << "MAME Path: " << mamePath << endl << endl;
+	lastFrameTime = getElapsedSeconds();
 }
 
 void DAMEAppApp::mouseDown( MouseEvent event )
@@ -189,12 +193,15 @@ void DAMEAppApp::keyDown( KeyEvent event ) {
 		currentGameIndex = games.size()-1;
 	}
 
-	cameraPosition = games[currentGameIndex].getPosition() + Vec3f(games[currentGameIndex].getImageWidth()/2, games[currentGameIndex].getImageHeight()/2, 0);
+	camera.moveTo(games[currentGameIndex].getPosition() + Vec3f(games[currentGameIndex].getImageWidth()/2, games[currentGameIndex].getImageHeight()/2, 0), 0.5);
 }
 
 void DAMEAppApp::update()
 {
+	double now = getElapsedSeconds();
 	hideCursor();
+	camera.update(now - lastFrameTime);
+	lastFrameTime = now;
 }
 
 void DAMEAppApp::draw()
@@ -233,7 +240,7 @@ void DAMEAppApp::drawLine(){
 	gl::clear(Color(0,0,0), true);
 
 	gl::pushMatrices();
-	gl::translate(Vec3f(getWindowWidth()/2-cameraPosition.x, getWindowHeight()/2-cameraPosition.y, -1*cameraPosition.z));
+	gl::translate(Vec3f(getWindowWidth()/2-camera.getPosition().x, getWindowHeight()/2-camera.getPosition().y, -1*camera.getPosition().z));
 	int i;
 	const int borderSize = 3;
 	for(i=0; i < games.size(); i++){
