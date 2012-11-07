@@ -17,7 +17,7 @@ Game::Game(void){
 Game::Game(string _url)
 {
 	url = _url;
-	image = gl::Texture(loadImage(loadUrl(Url("http://www.mamedb.com/snap/" + url + ".png"))));
+	image = gl::Texture(loadImage(loadAsset(url + ".png")));
 }
 
 Game::~Game(void)

@@ -2,8 +2,12 @@
 #include "cinder/gl/gl.h"
 #include "cinder/ImageIO.h"
 #include "cinder/gl/Texture.h"
+#include "cinder/Camera.h"
 #include "Game.h"
-#include "DAMECamera.h"
+#include "cinder/ObjLoader.h"
+#include "cinder/TriMesh.h"
+#include "cinder/gl/GlslProg.h"
+#include "cinder/gl/Fbo.h"
 //#include "Resources.h"
 
 #include <vector>
@@ -17,6 +21,7 @@
 
 #include "boost\program_options\parsers.hpp"
 #include "boost\program_options\variables_map.hpp"
+#include "boost\ptr_container\ptr_list.hpp"
 
 
 using namespace ci;
@@ -32,12 +37,15 @@ class DAMEAppApp : public AppBasic {
 	void keyDown( KeyEvent event );	
 	void update();
 	void draw();
+	void drawBackground();
 	void drawGrid();
 	void drawLine();
 	void runSelectedGame();
+	Vec3f getCenterOfCurrentGame();
 
-	DAMECamera camera;
-	int currentGameIndex;
+	CameraPersp camera;
+	CameraPersp backgroundCamera;
+	unsigned int currentGameIndex;
 	double lastFrameTime;
 
 	vector<string> gameNames;
@@ -46,6 +54,28 @@ class DAMEAppApp : public AppBasic {
 
 	string mamePath;
 	string romPath;
+
+	float cabinetRotation;
+	float cabinetScale;
+
+	TriMesh arcadeCabinet;
+
+	// Shaders for Toon Shading of background
+	gl::GlslProg depthShader;
+	gl::GlslProg convolutionShader;
+	gl::GlslProg normalShader;
+	gl::GlslProg normalEdgeShader;
+	gl::GlslProg silhouetteShader;
+	gl::GlslProg compositeShader;
+	gl::GlslProg passThruShader;
+	gl::GlslProg phongShader;
+
+	gl::Fbo normalBuffer;
+	gl::Fbo normalEdgeBuffer;
+	gl::Fbo depthBuffer;
+	gl::Fbo depthEdgeBuffer;
+	gl::Fbo silhouetteBuffer;
+	gl::Fbo shadedModelBuffer;
 };
 
 void DAMEAppApp::prepareSettings( Settings *settings )
@@ -130,7 +160,7 @@ void DAMEAppApp::setup()
 	gameNames.push_back("xmen");
 	gameTitles.push_back("Xmen");
 
-	int i = 0;
+	unsigned int i = 0;
 	for(; i < gameNames.size(); i++){
 		try {
 			games.push_back(Game(gameNames[i]));
@@ -147,14 +177,20 @@ void DAMEAppApp::setup()
 		} else {
 			xPosition = -1*games[i].getImage().getWidth() / 2;
 		}
-		games[i].setPosition(Vec3f(xPosition, -1 * games[i].getImage().getHeight() / 2, 0));
+		games[i].setPosition(Vec3f((float)xPosition, (float)(-1.0 * games[i].getImage().getHeight() / 2), 0.0));
 		//games[i].setTitleFont(Font( loadResource( RES_CHUNKFIVE_FONT ), 48));
 		games[i].setTitle(gameTitles[i]);
 	}
 
-	camera = DAMECamera(games[0].getPosition() + Vec3f(games[0].getImageWidth()/2, games[0].getImageHeight()/2, 0));
-
 	currentGameIndex = 0;
+
+	camera.setPerspective(60.0f, getWindowAspectRatio(), 5.0f, 5000.0f);
+	backgroundCamera.setPerspective(60.0f, getWindowAspectRatio(), 5.0f, 5000.0f);
+	backgroundCamera.lookAt(Vec3f(0.0f, 0.0f, -500.0f), Vec3f::zero(), -1*Vec3f::yAxis());
+
+	Vec3f centerOfFirstGame = getCenterOfCurrentGame();
+	Vec3f cameraPos = centerOfFirstGame + Vec3f(0.0f, 0.0f, -500.0f);
+	camera.lookAt(cameraPos, getCenterOfCurrentGame(), -1*Vec3f::yAxis());
 
 	// Load mame path and mame rom path
 	po::variables_map configOptions;
@@ -170,43 +206,100 @@ void DAMEAppApp::setup()
 	po::notify( configOptions );
 
 	lastFrameTime = getElapsedSeconds();
+
+	// Load 3d model of arcade cabinet
+	ObjLoader loader(loadAsset("cab.obj"));
+	loader.load(&arcadeCabinet);
+
+	// Setup our fbos and shaders
+	try {
+		depthShader = gl::GlslProg( loadAsset( "depth_vert.glsl" ), loadAsset( "depth_frag.glsl" ) );
+		convolutionShader = gl::GlslProg( loadAsset( "passThru_vert.glsl" ), loadAsset( "convolution_frag.glsl" ) );
+		normalShader = gl::GlslProg( loadAsset( "normal_vert.glsl" ), loadAsset( "normal_frag.glsl" ) );
+		normalEdgeShader = gl::GlslProg( loadAsset( "passThru_vert.glsl" ), loadAsset( "normal_edge_frag.glsl" ) );
+		silhouetteShader = gl::GlslProg( loadAsset( "passThru_vert.glsl" ), loadAsset( "render_silhouette_frag.glsl" ) );
+		compositeShader = gl::GlslProg( loadAsset( "passThru_vert.glsl" ), loadAsset( "composite_frag.glsl" ) );
+		passThruShader = gl::GlslProg( loadAsset( "passThru_vert.glsl" ), loadAsset( "passThru_frag.glsl" ) );
+		phongShader = gl::GlslProg( loadAsset( "phong_vert.glsl" ), loadAsset( "phong_frag.glsl" ) );
+	}
+	catch( gl::GlslProgCompileExc &exc ) {
+		console() << "Shader compile error: " << std::endl;
+		console() << exc.what();
+	}
+	catch( ... ) {
+		console() << "Unable to load shader" << std::endl;
+	}
+
+	gl::Fbo::Format format;
+	format.enableMipmapping(false);
+	format.setCoverageSamples(16);
+	format.setSamples(4);
+
+	depthBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
+	depthEdgeBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
+	normalBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
+	normalEdgeBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
+	silhouetteBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
+	shadedModelBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
+
+	cabinetRotation = -40.0;
+	cabinetScale = 175.0;
 }
 
 void DAMEAppApp::mouseDown( MouseEvent event )
 {
 }
 
+Vec3f DAMEAppApp::getCenterOfCurrentGame(){
+	return games[currentGameIndex].getPosition() + Vec3f((float)games[currentGameIndex].getImageWidth()/2, (float)games[currentGameIndex].getImageHeight()/2, 0.0);
+}
+
 void DAMEAppApp::keyDown( KeyEvent event ) {
+	bool changedGame = false;
+
 	if( event.getCode() == KeyEvent::KEY_ESCAPE ){
         quit();
 	} else if(event.getCode() == KeyEvent::KEY_RIGHT){
-		currentGameIndex++;
+		if(currentGameIndex < games.size()-1){
+			currentGameIndex++;
+			changedGame = true;
+		}
 	} else if(event.getCode() == KeyEvent::KEY_LEFT){
-		currentGameIndex--;
+		if(currentGameIndex != 0){
+			currentGameIndex--;
+			changedGame = true;
+		}
 	} else if(event.getCode() == KeyEvent::KEY_RETURN){
 		runSelectedGame();
 	}
 
-	if(currentGameIndex < 0){
-		currentGameIndex = 0;
-	} else if(currentGameIndex >= games.size()){
-		currentGameIndex = games.size()-1;
+	if(changedGame){
+		camera.lookAt(getCenterOfCurrentGame() + Vec3f(0.0f, 0.0f, -500.0f), getCenterOfCurrentGame(), -1*Vec3f::yAxis());
 	}
-
-	camera.moveTo(games[currentGameIndex].getPosition() + Vec3f(games[currentGameIndex].getImageWidth()/2, games[currentGameIndex].getImageHeight()/2, 0), 0.5);
 }
 
 void DAMEAppApp::update()
 {
 	double now = getElapsedSeconds();
 	hideCursor();
-	camera.update(now - lastFrameTime);
+	//camera.update(now - lastFrameTime);
+	/*boost::ptr_list<Animation>::iterator it;
+	for(it = animations.begin(); it != animations.end();){
+		console() << endl << endl << "Calling tick function on animation " << endl << endl;
+		if(!it->isDone()){
+			it->tick(now - lastFrameTime);
+			it++;
+		} else {
+			console() << endl << endl << "Removing finished animation " << endl << endl;
+			it = animations.erase(it);
+		}
+	}*/
+
 	lastFrameTime = now;
 }
 
 void DAMEAppApp::draw()
 {
-	//drawGrid();
 	drawLine();
 }
 
@@ -216,7 +309,7 @@ void DAMEAppApp::drawGrid()
 	gl::clear( Color( 0, 0, 0 ), true );
 
 	const int gap = 20;
-	int i;
+	unsigned int i;
 	int widthSoFar = gap;
 	int currentY = gap;
 	int maxHeight = 0;
@@ -236,29 +329,194 @@ void DAMEAppApp::drawGrid()
 	}
 }
 
-void DAMEAppApp::drawLine(){
-	gl::clear(Color(0,0,0), true);
-
+void DAMEAppApp::drawBackground(){
 	gl::pushMatrices();
-	gl::translate(Vec3f(getWindowWidth()/2-camera.getPosition().x, getWindowHeight()/2-camera.getPosition().y, -1*camera.getPosition().z));
-	int i;
-	const int borderSize = 3;
-	for(i=0; i < games.size(); i++){
-		gl::pushMatrices();
-		if(i == currentGameIndex){
-			//gl::scale(Vec3f(2.0, 2.0, 1.0));
-			gl::drawSolidRect(Rectf(games[i].getPosition().x-borderSize, games[i].getPosition().y-borderSize, games[i].getPosition().x + games[i].getImage().getWidth()+borderSize, games[i].getPosition().y + games[i].getImage().getHeight()+borderSize), false);
-			games[i].getRenderedTitle().enableAndBind();
-			gl::draw(games[i].getRenderedTitle(), Vec2f(games[i].getPosition().x + games[i].getImageWidth()/2 - games[i].getRenderedTitle().getWidth()/2, games[i].getPosition().y+games[i].getImageHeight()+25));
-			games[i].getRenderedTitle().unbind();
-		}
-		games[i].enableAndBindImage();
-		gl::draw(games[i].getImage(), Vec2f(games[i].getPosition().x, games[i].getPosition().y));
-		games[i].getImage().unbind();
-		gl::popMatrices();
-	}
+	// Render depth info to a texture
+	depthBuffer.bindFramebuffer();
+		gl::enableDepthRead();
+		gl::enableDepthWrite();
+		gl::clear(Color::black(), true);
 
+		depthShader.bind();
+			gl::pushMatrices();
+				gl::setMatrices(backgroundCamera);
+				gl::translate(Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f));
+				gl::rotate(Vec3f(180.0, cabinetRotation, 0.0));
+				gl::scale(cabinetScale, cabinetScale, cabinetScale);
+				gl::draw(arcadeCabinet);
+			gl::popMatrices();
+		depthShader.unbind();
+	depthBuffer.unbindFramebuffer();
+
+	gl::disableDepthRead();
+	gl::disableDepthWrite();
+
+	// Run an edge detection shader against the depth image to get an
+	// outline around the object (Note: this will not give you interior
+	// edges, we'll get those from the normal rendering below)
+	gl::pushModelView();
+		depthEdgeBuffer.bindFramebuffer();
+			gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+			gl::scale( Vec3f(1, -1, 1) );
+			convolutionShader.bind();
+				convolutionShader.uniform("depthImage", 0);
+				convolutionShader.uniform("textureSizeX", (float)depthBuffer.getTexture().getWidth());
+				convolutionShader.uniform("textureSizeY", (float)depthBuffer.getTexture().getHeight());
+
+				depthBuffer.getTexture().bind();
+					gl::color(Color::white());
+					gl::drawSolidRect( getWindowBounds() );
+				depthBuffer.getTexture().unbind();
+			convolutionShader.unbind();
+		depthEdgeBuffer.unbindFramebuffer();
+	gl::popModelView();
+
+	// Render model with faces colored using normals to a texture
+	normalBuffer.bindFramebuffer();
+		gl::enableDepthRead();
+		gl::enableDepthWrite();
+		gl::clear(Color::black(), true);
+
+		normalShader.bind();
+			gl::pushMatrices();
+				gl::setMatrices(backgroundCamera);
+				gl::translate(Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f));
+				gl::rotate(Vec3f(180.0, cabinetRotation, 0.0));
+				gl::scale(cabinetScale, cabinetScale, cabinetScale);
+				gl::draw(arcadeCabinet);
+			gl::popMatrices();
+		normalShader.unbind();
+	normalBuffer.unbindFramebuffer();
+    
+	gl::clear(Color::white(), true);
+	gl::disableDepthRead();
+	gl::disableDepthWrite();
+
+	// Now run an edge detection against the normal texture to get edges,
+	// including interior ones
+	gl::pushModelView();
+		normalEdgeBuffer.bindFramebuffer();
+			gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+			gl::scale( Vec3f(1, -1, 1) );
+			normalEdgeShader.bind();
+				normalEdgeShader.uniform("normalImage", 0);
+				normalEdgeShader.uniform("textureSizeX", (float)depthBuffer.getTexture().getWidth());
+				normalEdgeShader.uniform("textureSizeY", (float)depthBuffer.getTexture().getHeight());
+				normalEdgeShader.uniform("normalEdgeThreshold", 0.20f);
+
+				normalBuffer.getTexture().bind();
+					gl::color(Color::white());
+					gl::drawSolidRect( getWindowBounds() );
+				normalBuffer.getTexture().unbind();
+			normalEdgeShader.unbind();
+		normalEdgeBuffer.unbindFramebuffer();
+	gl::popModelView();
+
+	// Now combine the depth edge texture data with the normal edge data,
+	// using the stronger value from either texture so that we get a solid 
+	// outline and solid interior edges
+	gl::pushModelView();
+		silhouetteBuffer.bindFramebuffer();
+			gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+			gl::scale( Vec3f(1, -1, 1) );
+			silhouetteShader.bind();
+				silhouetteShader.uniform("normalEdgeImage", 0);
+				silhouetteShader.uniform("depthEdgeImage", 1);
+				silhouetteShader.uniform("textureSizeX", (float)depthEdgeBuffer.getTexture().getWidth());
+				silhouetteShader.uniform("textureSizeY", (float)depthEdgeBuffer.getTexture().getHeight());
+
+				normalEdgeBuffer.getTexture().bind();
+				depthEdgeBuffer.getTexture().bind(1);
+					gl::color(Color::white());
+					gl::drawSolidRect( getWindowBounds() );
+				depthEdgeBuffer.getTexture().unbind(1);
+				normalBuffer.getTexture().unbind();
+			silhouetteShader.unbind();
+		silhouetteBuffer.unbindFramebuffer();
+	gl::popModelView();
+
+	// Now render the model to a texture
+	shadedModelBuffer.bindFramebuffer();
+		gl::enableDepthRead();
+		gl::enableDepthWrite();
+		gl::clear(Color(255.0f, 136.0f/255.0f, 44.0f/255.0f), true);
+		phongShader.bind();
+
+		gl::pushMatrices();
+			gl::setMatrices(backgroundCamera);
+			gl::translate(Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f));
+			gl::rotate(Vec3f(180.0, cabinetRotation, 0.0));
+			gl::scale(cabinetScale, cabinetScale, cabinetScale);
+			gl::draw(arcadeCabinet);
+		gl::popMatrices();
+		phongShader.unbind();
+	shadedModelBuffer.unbindFramebuffer();
+
+	// Finally, composite the shaded texture with the combined edge
+	// textures to get our final, "Toon Shaded" texture.
+	depthBuffer.bindFramebuffer();
+		gl::pushModelView();
+			gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+			gl::scale( Vec3f(1, -1, 1) );
+			compositeShader.bind();
+				compositeShader.uniform("shadedModelImage", 1);
+				compositeShader.uniform("silhouetteImage", 0);
+				compositeShader.uniform("silhouetteColor", Vec4f(0.0, 0.0, 0.0, 1.0));
+
+				silhouetteBuffer.getTexture().bind();
+				shadedModelBuffer.getTexture().bind(1);
+					gl::color(Color::white());
+					gl::drawSolidRect( getWindowBounds() );
+				silhouetteBuffer.getTexture().unbind(1);
+				shadedModelBuffer.getTexture().unbind();
+			compositeShader.unbind();
+		gl::popModelView();
+	depthBuffer.unbindFramebuffer();
 	gl::popMatrices();
+}
+
+void DAMEAppApp::drawLine(){
+	gl::clear(Color::black(), true);
+	
+	drawBackground();
+	
+	// Draw foreground to the same texture as background
+	gl::disableDepthRead();
+	gl::disableDepthWrite();
+	gl::pushMatrices();
+		gl::setMatrices(camera);
+		depthBuffer.bindFramebuffer();
+		unsigned int i;
+		const int borderSize = 3;
+		for(i=0; i < games.size(); i++){
+			if(i == currentGameIndex){
+				//gl::scale(Vec3f(2.0, 2.0, 1.0));
+				gl::pushMatrices();
+				gl::translate(0.0, 0.0, 1.0);
+				gl::drawSolidRect(Rectf(games[i].getPosition().x-borderSize, games[i].getPosition().y-borderSize, games[i].getPosition().x + games[i].getImage().getWidth()+borderSize, games[i].getPosition().y + games[i].getImage().getHeight()+borderSize), false);
+				gl::popMatrices();
+				games[i].getRenderedTitle().enableAndBind();
+				gl::draw(games[i].getRenderedTitle(), Vec2f(games[i].getPosition().x + games[i].getImageWidth()/2 - games[i].getRenderedTitle().getWidth()/2, games[i].getPosition().y+games[i].getImageHeight()+25));
+				games[i].getRenderedTitle().unbind();
+			}
+			games[i].enableAndBindImage();
+			gl::draw(games[i].getImage(), Vec2f(games[i].getPosition().x, games[i].getPosition().y));
+			games[i].getImage().unbind();
+		}
+		depthBuffer.unbindFramebuffer();
+	gl::popMatrices();
+
+	gl::pushModelView();
+		gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+		gl::scale( Vec3f(1, -1, 1) );
+		passThruShader.bind();
+			depthBuffer.getTexture().bind();
+			passThruShader.uniform("texture", 0);
+				gl::color(Color::white());
+				gl::drawSolidRect( getWindowBounds() );
+			depthBuffer.getTexture().unbind();
+		passThruShader.unbind();
+	gl::popModelView();
 }
 
 void DAMEAppApp::runSelectedGame(){

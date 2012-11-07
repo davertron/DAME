@@ -34,3 +34,4 @@ obj/
 [Rr]elease*/
 Ankh.NoLoad
 
+!assets/*.obj
