@@ -115,6 +115,20 @@
     <ResourceCompile Include="Resources.rc" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\assets\composite_fore_background.glsl" />
+    <None Include="..\assets\composite_fore_background.glsl~" />
+    <None Include="..\assets\composite_frag.glsl" />
+    <None Include="..\assets\convolution_frag.glsl" />
+    <None Include="..\assets\depth_frag.glsl" />
+    <None Include="..\assets\depth_vert.glsl" />
+    <None Include="..\assets\normal_edge_frag.glsl" />
+    <None Include="..\assets\normal_frag.glsl" />
+    <None Include="..\assets\normal_vert.glsl" />
+    <None Include="..\assets\passThru_frag.glsl" />
+    <None Include="..\assets\passThru_vert.glsl" />
+    <None Include="..\assets\phong_frag.glsl" />
+    <None Include="..\assets\phong_vert.glsl" />
+    <None Include="..\assets\render_silhouette_frag.glsl" />
     <None Include="settings.ini" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

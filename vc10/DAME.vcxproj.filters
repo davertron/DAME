@@ -39,5 +39,47 @@
     <None Include="settings.ini">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="..\assets\composite_fore_background.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\composite_fore_background.glsl~">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\composite_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\convolution_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\depth_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\depth_vert.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\normal_edge_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\normal_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\normal_vert.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\passThru_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\passThru_vert.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\phong_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\phong_vert.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\assets\render_silhouette_frag.glsl">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

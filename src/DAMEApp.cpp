@@ -8,6 +8,9 @@
 #include "cinder/TriMesh.h"
 #include "cinder/gl/GlslProg.h"
 #include "cinder/gl/Fbo.h"
+#include "cinder/Text.h"
+#include "Resources.h"
+#include "cinder/Utilities.h"
 //#include "Resources.h"
 
 #include <vector>
@@ -41,12 +44,14 @@ class DAMEAppApp : public AppBasic {
 	void drawGrid();
 	void drawLine();
 	void runSelectedGame();
+	bool backgroundNeedsUpdate();
 	Vec3f getCenterOfCurrentGame();
 
 	CameraPersp camera;
 	CameraPersp backgroundCamera;
 	unsigned int currentGameIndex;
 	double lastFrameTime;
+	double lastBackgroundDraw;
 
 	vector<string> gameNames;
 	vector<string> gameTitles;
@@ -206,6 +211,7 @@ void DAMEAppApp::setup()
 	po::notify( configOptions );
 
 	lastFrameTime = getElapsedSeconds();
+	lastBackgroundDraw = -1;
 
 	// Load 3d model of arcade cabinet
 	ObjLoader loader(loadAsset("cab.obj"));
@@ -274,6 +280,7 @@ void DAMEAppApp::keyDown( KeyEvent event ) {
 	}
 
 	if(changedGame){
+		lastBackgroundDraw = -1;
 		camera.lookAt(getCenterOfCurrentGame() + Vec3f(0.0f, 0.0f, -500.0f), getCenterOfCurrentGame(), -1*Vec3f::yAxis());
 	}
 }
@@ -330,6 +337,18 @@ void DAMEAppApp::drawGrid()
 }
 
 void DAMEAppApp::drawBackground(){
+	gl::pushModelView();
+		gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+		gl::scale( Vec3f(1, -1, 1) );
+		phongShader.bind();
+		phongShader.uniform("quantize", 1.0f);
+		phongShader.uniform("quantLevels", 10.0f);
+		phongShader.uniform("lightPosition", Vec3f(0.0f, 0.0f, 5.0f));
+			gl::color(Color::white());
+			gl::drawSolidRect( getWindowBounds() );
+		phongShader.unbind();
+	gl::popModelView();
+
 	gl::pushMatrices();
 	// Render depth info to a texture
 	depthBuffer.bindFramebuffer();
@@ -475,10 +494,20 @@ void DAMEAppApp::drawBackground(){
 	gl::popMatrices();
 }
 
+bool DAMEAppApp::backgroundNeedsUpdate(){
+	if(getElapsedSeconds() - lastBackgroundDraw > 1){
+		lastBackgroundDraw = getElapsedSeconds();
+		return true;
+	} else {
+		return false;
+	}
+}
+
 void DAMEAppApp::drawLine(){
 	gl::clear(Color::black(), true);
-	
-	drawBackground();
+	if(backgroundNeedsUpdate()){
+		drawBackground();
+	}
 	
 	// Draw foreground to the same texture as background
 	gl::disableDepthRead();
@@ -507,7 +536,7 @@ void DAMEAppApp::drawLine(){
 	gl::popMatrices();
 
 	gl::pushModelView();
-		gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
+		gl::translate( Vec2f(0.0f, (float)getWindowHeight()) );
 		gl::scale( Vec3f(1, -1, 1) );
 		passThruShader.bind();
 			depthBuffer.getTexture().bind();
@@ -516,6 +545,16 @@ void DAMEAppApp::drawLine(){
 				gl::drawSolidRect( getWindowBounds() );
 			depthBuffer.getTexture().unbind();
 		passThruShader.unbind();
+	gl::popModelView();
+
+	// Draw FPS counter
+	gl::pushModelView();
+		gl::translate(Vec2f(getWindowWidth() - 100.0f, 50.0f));
+		TextLayout layout;
+		layout.setFont(Font( loadResource( RES_AKASHI_FONT ), 30));
+		layout.setColor( Color( 1.0f, 1.0f, 1.0f) );
+		layout.addCenteredLine(toString((int)getAverageFps()));
+		gl::draw(gl::Texture(layout.render(true, true)));
 	gl::popModelView();
 }
 
