@@ -1,11 +1,9 @@
 #include "cinder/app/AppBasic.h"
 #include "cinder/gl/gl.h"
-#include "cinder/ImageIO.h"
 #include "cinder/gl/Texture.h"
 #include "cinder/Camera.h"
 #include "Game.h"
-#include "cinder/ObjLoader.h"
-#include "cinder/TriMesh.h"
+#include "Console.h"
 #include "cinder/gl/GlslProg.h"
 #include "cinder/gl/Fbo.h"
 #include "cinder/Text.h"
@@ -32,7 +30,7 @@ using namespace ci::app;
 using namespace std;
 namespace po = boost::program_options;
 
-class DAMEAppApp : public AppBasic {
+class DAMEApp : public AppBasic {
   public:
 	void prepareSettings( Settings *settings );
 	void setup();
@@ -47,11 +45,16 @@ class DAMEAppApp : public AppBasic {
 	bool backgroundNeedsUpdate();
 	Vec3f getCenterOfCurrentGame();
 
+	enum { CONSOLE_SELECT, GAME_SELECT };
+	int gameMode;
+
+	int CONSOLES[2];
+	int currentConsole;
+
 	CameraPersp camera;
 	CameraPersp backgroundCamera;
 	unsigned int currentGameIndex;
 	double lastFrameTime;
-	double lastBackgroundDraw;
 
 	vector<string> gameNames;
 	vector<string> gameTitles;
@@ -60,10 +63,8 @@ class DAMEAppApp : public AppBasic {
 	string mamePath;
 	string romPath;
 
-	float cabinetRotation;
-	float cabinetScale;
-
-	TriMesh arcadeCabinet;
+	Console MAME;
+	Console SNES;
 
 	// Shaders for Toon Shading of background
 	gl::GlslProg depthShader;
@@ -83,15 +84,17 @@ class DAMEAppApp : public AppBasic {
 	gl::Fbo shadedModelBuffer;
 };
 
-void DAMEAppApp::prepareSettings( Settings *settings )
+void DAMEApp::prepareSettings( Settings *settings )
 {
 	settings->setFullScreen(true);
-	//settings->setWindowSize(800, 600);
 	settings->setFrameRate( 60.0f );
 }
 
-void DAMEAppApp::setup()
+void DAMEApp::setup()
 {
+	gameMode = CONSOLE_SELECT;
+	currentConsole = 0;
+
 	gameNames.push_back("starwars");
 	gameTitles.push_back("Star Wars");
 	gameNames.push_back("rastan");
@@ -191,7 +194,7 @@ void DAMEAppApp::setup()
 
 	camera.setPerspective(60.0f, getWindowAspectRatio(), 5.0f, 5000.0f);
 	backgroundCamera.setPerspective(60.0f, getWindowAspectRatio(), 5.0f, 5000.0f);
-	backgroundCamera.lookAt(Vec3f(0.0f, 0.0f, -500.0f), Vec3f::zero(), -1*Vec3f::yAxis());
+	backgroundCamera.lookAt(Vec3f(0.0f, 0.0f, -1000.0f), Vec3f::zero(), -1*Vec3f::yAxis());
 
 	Vec3f centerOfFirstGame = getCenterOfCurrentGame();
 	Vec3f cameraPos = centerOfFirstGame + Vec3f(0.0f, 0.0f, -500.0f);
@@ -211,11 +214,17 @@ void DAMEAppApp::setup()
 	po::notify( configOptions );
 
 	lastFrameTime = getElapsedSeconds();
-	lastBackgroundDraw = -1;
 
-	// Load 3d model of arcade cabinet
-	ObjLoader loader(loadAsset("cab.obj"));
-	loader.load(&arcadeCabinet);
+	// Load Consoles
+	MAME.setAsset("cab.obj");
+	MAME.initialize();
+	MAME.setRotation(-40.0f);
+	MAME.setScale(175.0f);
+
+	SNES.setAsset("snes.obj");
+	SNES.initialize();
+	SNES.setRotation(40.0f);
+	SNES.setScale(150.0f);
 
 	// Setup our fbos and shaders
 	try {
@@ -238,8 +247,8 @@ void DAMEAppApp::setup()
 
 	gl::Fbo::Format format;
 	format.enableMipmapping(false);
-	format.setCoverageSamples(16);
-	format.setSamples(4);
+	format.setCoverageSamples(0);
+	format.setSamples(0);
 
 	depthBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
 	depthEdgeBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
@@ -247,45 +256,61 @@ void DAMEAppApp::setup()
 	normalEdgeBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
 	silhouetteBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
 	shadedModelBuffer = gl::Fbo(getWindowWidth(), getWindowHeight(), format);
-
-	cabinetRotation = -40.0;
-	cabinetScale = 175.0;
 }
 
-void DAMEAppApp::mouseDown( MouseEvent event )
+void DAMEApp::mouseDown( MouseEvent event )
 {
 }
 
-Vec3f DAMEAppApp::getCenterOfCurrentGame(){
+Vec3f DAMEApp::getCenterOfCurrentGame(){
 	return games[currentGameIndex].getPosition() + Vec3f((float)games[currentGameIndex].getImageWidth()/2, (float)games[currentGameIndex].getImageHeight()/2, 0.0);
 }
 
-void DAMEAppApp::keyDown( KeyEvent event ) {
-	bool changedGame = false;
+void DAMEApp::keyDown( KeyEvent event ) {
+	if(gameMode == CONSOLE_SELECT){
+		bool changedConsole = false;
 
-	if( event.getCode() == KeyEvent::KEY_ESCAPE ){
-        quit();
-	} else if(event.getCode() == KeyEvent::KEY_RIGHT){
-		if(currentGameIndex < games.size()-1){
-			currentGameIndex++;
-			changedGame = true;
+		if( event.getCode() == KeyEvent::KEY_ESCAPE ){
+			quit();
+		} else if(event.getCode() == KeyEvent::KEY_RIGHT){
+			if(currentConsole < 1){
+				currentConsole++;
+				changedConsole = true;
+			}
+		} else if(event.getCode() == KeyEvent::KEY_LEFT){
+			if(currentConsole != 0){
+				currentConsole--;
+				changedConsole = true;
+			}
+		} else if(event.getCode() == KeyEvent::KEY_RETURN){
+			gameMode = GAME_SELECT;
 		}
-	} else if(event.getCode() == KeyEvent::KEY_LEFT){
-		if(currentGameIndex != 0){
-			currentGameIndex--;
-			changedGame = true;
-		}
-	} else if(event.getCode() == KeyEvent::KEY_RETURN){
-		runSelectedGame();
-	}
+	} else if(gameMode == GAME_SELECT){
+		bool changedGame = false;
 
-	if(changedGame){
-		lastBackgroundDraw = -1;
-		camera.lookAt(getCenterOfCurrentGame() + Vec3f(0.0f, 0.0f, -500.0f), getCenterOfCurrentGame(), -1*Vec3f::yAxis());
+		if(event.getCode() == KeyEvent::KEY_ESCAPE){
+			gameMode = CONSOLE_SELECT;
+		} else if(event.getCode() == KeyEvent::KEY_RIGHT){
+			if(currentGameIndex < games.size()-1){
+				currentGameIndex++;
+				changedGame = true;
+			}
+		} else if(event.getCode() == KeyEvent::KEY_LEFT){
+			if(currentGameIndex != 0){
+				currentGameIndex--;
+				changedGame = true;
+			}
+		} else if(event.getCode() == KeyEvent::KEY_RETURN){
+			runSelectedGame();
+		}
+
+		if(changedGame){
+			camera.lookAt(getCenterOfCurrentGame() + Vec3f(0.0f, 0.0f, -500.0f), getCenterOfCurrentGame(), -1*Vec3f::yAxis());
+		}
 	}
 }
 
-void DAMEAppApp::update()
+void DAMEApp::update()
 {
 	double now = getElapsedSeconds();
 	hideCursor();
@@ -305,13 +330,13 @@ void DAMEAppApp::update()
 	lastFrameTime = now;
 }
 
-void DAMEAppApp::draw()
+void DAMEApp::draw()
 {
 	drawLine();
 }
 
 // Not currently used, but I left it here in case I wanted to go back to it at some point
-void DAMEAppApp::drawGrid()
+void DAMEApp::drawGrid()
 {
 	gl::clear( Color( 0, 0, 0 ), true );
 
@@ -336,21 +361,33 @@ void DAMEAppApp::drawGrid()
 	}
 }
 
-void DAMEAppApp::drawBackground(){
+void DAMEApp::drawBackground(){
 	gl::pushModelView();
 		gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
 		gl::scale( Vec3f(1, -1, 1) );
 		phongShader.bind();
 		phongShader.uniform("quantize", 1.0f);
 		phongShader.uniform("quantLevels", 10.0f);
-		phongShader.uniform("lightPosition", Vec3f(0.0f, 0.0f, 5.0f));
+		phongShader.uniform("lightPosition", Vec3f(60.0f*sin(getElapsedSeconds()), 150.0f*cos(getElapsedSeconds()), 5.0f));
 			gl::color(Color::white());
 			gl::drawSolidRect( getWindowBounds() );
 		phongShader.unbind();
 	gl::popModelView();
 
+	Vec3f cabinetPosition;
+	Vec3f snesPosition;
+
+	if(gameMode == CONSOLE_SELECT){
+		cabinetPosition = Vec3f(0.0f, 0.0f, 0.0f);
+		snesPosition = Vec3f(650.0f, 0.0f, 0.0f);
+	} else {
+		cabinetPosition = Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f);
+		snesPosition = Vec3f(5000.0f, 0.0f, 0.0f);
+	}
+
 	gl::pushMatrices();
 	// Render depth info to a texture
+	gl::color(Color::white());
 	depthBuffer.bindFramebuffer();
 		gl::enableDepthRead();
 		gl::enableDepthWrite();
@@ -359,10 +396,17 @@ void DAMEAppApp::drawBackground(){
 		depthShader.bind();
 			gl::pushMatrices();
 				gl::setMatrices(backgroundCamera);
-				gl::translate(Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f));
-				gl::rotate(Vec3f(180.0, cabinetRotation, 0.0));
-				gl::scale(cabinetScale, cabinetScale, cabinetScale);
-				gl::draw(arcadeCabinet);
+				gl::translate(cabinetPosition);
+				gl::rotate(Vec3f(180.0, MAME.getRotation(), 0.0));
+				gl::scale(MAME.getScale(), MAME.getScale(), MAME.getScale());
+				gl::draw(MAME.getMesh());
+			gl::popMatrices();
+			gl::pushMatrices();
+				gl::setMatrices(backgroundCamera);
+				gl::translate(snesPosition);
+				gl::rotate(Vec3f(180.0, SNES.getRotation(), 0.0));
+				gl::scale(SNES.getScale(), SNES.getScale(), SNES.getScale());
+				gl::draw(SNES.getMesh());
 			gl::popMatrices();
 		depthShader.unbind();
 	depthBuffer.unbindFramebuffer();
@@ -399,14 +443,21 @@ void DAMEAppApp::drawBackground(){
 		normalShader.bind();
 			gl::pushMatrices();
 				gl::setMatrices(backgroundCamera);
-				gl::translate(Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f));
-				gl::rotate(Vec3f(180.0, cabinetRotation, 0.0));
-				gl::scale(cabinetScale, cabinetScale, cabinetScale);
-				gl::draw(arcadeCabinet);
+				gl::translate(cabinetPosition);
+				gl::rotate(Vec3f(180.0, MAME.getRotation(), 0.0));
+				gl::scale(MAME.getScale(), MAME.getScale(), MAME.getScale());
+				gl::draw(MAME.getMesh());
+			gl::popMatrices();
+			gl::pushMatrices();
+				gl::setMatrices(backgroundCamera);
+				gl::translate(snesPosition);
+				gl::rotate(Vec3f(180.0, SNES.getRotation(), 0.0));
+				gl::scale(SNES.getScale(), SNES.getScale(), SNES.getScale());
+				gl::draw(SNES.getMesh());
 			gl::popMatrices();
 		normalShader.unbind();
 	normalBuffer.unbindFramebuffer();
-    
+   
 	gl::clear(Color::white(), true);
 	gl::disableDepthRead();
 	gl::disableDepthWrite();
@@ -463,16 +514,24 @@ void DAMEAppApp::drawBackground(){
 
 		gl::pushMatrices();
 			gl::setMatrices(backgroundCamera);
-			gl::translate(Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f));
-			gl::rotate(Vec3f(180.0, cabinetRotation, 0.0));
-			gl::scale(cabinetScale, cabinetScale, cabinetScale);
-			gl::draw(arcadeCabinet);
+			gl::translate(cabinetPosition);
+			gl::rotate(Vec3f(180.0, MAME.getRotation(), 0.0));
+			gl::scale(MAME.getScale(), MAME.getScale(), MAME.getScale());
+			gl::draw(MAME.getMesh());
 		gl::popMatrices();
+		gl::pushMatrices();
+				gl::setMatrices(backgroundCamera);
+				gl::translate(snesPosition);
+				gl::rotate(Vec3f(180.0, SNES.getRotation(), 0.0));
+				gl::scale(SNES.getScale(), SNES.getScale(), SNES.getScale());
+				gl::draw(SNES.getMesh());
+			gl::popMatrices();
 		phongShader.unbind();
 	shadedModelBuffer.unbindFramebuffer();
 
 	// Finally, composite the shaded texture with the combined edge
 	// textures to get our final, "Toon Shaded" texture.
+	// NOTE: We're reusing texture 0 here...
 	depthBuffer.bindFramebuffer();
 		gl::pushModelView();
 			gl::translate( Vec2f(0.0, (float)getWindowHeight()) );
@@ -494,47 +553,41 @@ void DAMEAppApp::drawBackground(){
 	gl::popMatrices();
 }
 
-bool DAMEAppApp::backgroundNeedsUpdate(){
-	if(getElapsedSeconds() - lastBackgroundDraw > 1){
-		lastBackgroundDraw = getElapsedSeconds();
-		return true;
-	} else {
-		return false;
-	}
-}
-
-void DAMEAppApp::drawLine(){
+void DAMEApp::drawLine(){
 	gl::clear(Color::black(), true);
-	if(backgroundNeedsUpdate()){
-		drawBackground();
-	}
+	drawBackground();
 	
-	// Draw foreground to the same texture as background
-	gl::disableDepthRead();
-	gl::disableDepthWrite();
-	gl::pushMatrices();
-		gl::setMatrices(camera);
-		depthBuffer.bindFramebuffer();
-		unsigned int i;
-		const int borderSize = 3;
-		for(i=0; i < games.size(); i++){
-			if(i == currentGameIndex){
-				//gl::scale(Vec3f(2.0, 2.0, 1.0));
-				gl::pushMatrices();
-				gl::translate(0.0, 0.0, 1.0);
-				gl::drawSolidRect(Rectf(games[i].getPosition().x-borderSize, games[i].getPosition().y-borderSize, games[i].getPosition().x + games[i].getImage().getWidth()+borderSize, games[i].getPosition().y + games[i].getImage().getHeight()+borderSize), false);
-				gl::popMatrices();
-				games[i].getRenderedTitle().enableAndBind();
-				gl::draw(games[i].getRenderedTitle(), Vec2f(games[i].getPosition().x + games[i].getImageWidth()/2 - games[i].getRenderedTitle().getWidth()/2, games[i].getPosition().y+games[i].getImageHeight()+25));
-				games[i].getRenderedTitle().unbind();
+	if(gameMode == GAME_SELECT){
+		// Draw foreground to the same texture as background
+		gl::disableDepthRead();
+		gl::disableDepthWrite();
+		gl::pushMatrices();
+			gl::setMatrices(camera);
+			depthBuffer.bindFramebuffer();
+			unsigned int i;
+			const int borderSize = 3;
+			for(i=0; i < games.size(); i++){
+				if(i == currentGameIndex){
+					//gl::scale(Vec3f(2.0, 2.0, 1.0));
+					gl::pushMatrices();
+					gl::translate(0.0, 0.0, 1.0);
+					gl::drawSolidRect(Rectf(games[i].getPosition().x-borderSize, games[i].getPosition().y-borderSize, games[i].getPosition().x + games[i].getImage().getWidth()+borderSize, games[i].getPosition().y + games[i].getImage().getHeight()+borderSize), false);
+					gl::popMatrices();
+					gl::enableAlphaBlending();
+					games[i].getRenderedTitle().enableAndBind();
+					gl::draw(games[i].getRenderedTitle(), Vec2f(games[i].getPosition().x + games[i].getImageWidth()/2 - games[i].getRenderedTitle().getWidth()/2, games[i].getPosition().y+games[i].getImageHeight()+25));
+					games[i].getRenderedTitle().unbind();
+					gl::disableAlphaBlending();
+				}
+				games[i].enableAndBindImage();
+				gl::draw(games[i].getImage(), Vec2f(games[i].getPosition().x, games[i].getPosition().y));
+				games[i].getImage().unbind();
 			}
-			games[i].enableAndBindImage();
-			gl::draw(games[i].getImage(), Vec2f(games[i].getPosition().x, games[i].getPosition().y));
-			games[i].getImage().unbind();
-		}
-		depthBuffer.unbindFramebuffer();
-	gl::popMatrices();
+			depthBuffer.unbindFramebuffer();
+		gl::popMatrices();
+	}
 
+	// Draw full screen rect with texture
 	gl::pushModelView();
 		gl::translate( Vec2f(0.0f, (float)getWindowHeight()) );
 		gl::scale( Vec3f(1, -1, 1) );
@@ -553,12 +606,15 @@ void DAMEAppApp::drawLine(){
 		TextLayout layout;
 		layout.setFont(Font( loadResource( RES_AKASHI_FONT ), 30));
 		layout.setColor( Color( 1.0f, 1.0f, 1.0f) );
+		layout.clear(ColorA(0.0f, 0.0f, 0.0f, 0.0f));
 		layout.addCenteredLine(toString((int)getAverageFps()));
+		gl::enableAlphaBlending();
 		gl::draw(gl::Texture(layout.render(true, true)));
+		gl::disableAlphaBlending();
 	gl::popModelView();
 }
 
-void DAMEAppApp::runSelectedGame(){
+void DAMEApp::runSelectedGame(){
 	console() << endl << endl << endl;
 	STARTUPINFO si;
     PROCESS_INFORMATION pi;
@@ -604,4 +660,4 @@ void DAMEAppApp::runSelectedGame(){
 	setFullScreen(true);
 }
 
-CINDER_APP_BASIC( DAMEAppApp, RendererGl )
+CINDER_APP_BASIC( DAMEApp, RendererGl )

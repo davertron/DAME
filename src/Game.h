@@ -2,19 +2,16 @@
 #include <string>
 #include "cinder/gl/Texture.h"
 #include "cinder/Font.h"
+#include "MenuObject.h"
 
 using namespace ci;
 using namespace std;
 
-class Game
+class Game : public MenuObject
 {
 private:
 	string url;
-	string title;
 	gl::Texture image;
-	Vec3f position;
-	gl::Texture renderedTitle;
-	Font titleFont;
 public:
 	Game(void);
 	Game(string url);
@@ -23,10 +20,5 @@ public:
 	int getImageHeight();
 	void enableAndBindImage();
 	gl::Texture getImage();
-	void setPosition(Vec3f);
-	Vec3f getPosition();
-	void setTitle(string);
-	string getTitle();
-	gl::Texture getRenderedTitle();
 };
 
