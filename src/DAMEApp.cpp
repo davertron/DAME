@@ -2,6 +2,7 @@
 #include "cinder/gl/gl.h"
 #include "cinder/gl/Texture.h"
 #include "cinder/Camera.h"
+#include "cinder/Timeline.h"
 #include "Game.h"
 #include "Console.h"
 #include "cinder/gl/GlslProg.h"
@@ -53,6 +54,7 @@ class DAMEApp : public AppBasic {
 
 	CameraPersp camera;
 	CameraPersp backgroundCamera;
+	Anim<Vec3f> cameraPos;
 	unsigned int currentGameIndex;
 	double lastFrameTime;
 
@@ -197,7 +199,7 @@ void DAMEApp::setup()
 	backgroundCamera.lookAt(Vec3f(0.0f, 0.0f, -1000.0f), Vec3f::zero(), -1*Vec3f::yAxis());
 
 	Vec3f centerOfFirstGame = getCenterOfCurrentGame();
-	Vec3f cameraPos = centerOfFirstGame + Vec3f(0.0f, 0.0f, -500.0f);
+	cameraPos = centerOfFirstGame + Vec3f(0.0f, 0.0f, -500.0f);
 	camera.lookAt(cameraPos, getCenterOfCurrentGame(), -1*Vec3f::yAxis());
 
 	// Load mame path and mame rom path
@@ -305,7 +307,7 @@ void DAMEApp::keyDown( KeyEvent event ) {
 		}
 
 		if(changedGame){
-			camera.lookAt(getCenterOfCurrentGame() + Vec3f(0.0f, 0.0f, -500.0f), getCenterOfCurrentGame(), -1*Vec3f::yAxis());
+			timeline().apply( &cameraPos, Vec3f(getCenterOfCurrentGame().x, cameraPos().y, cameraPos().z), 0.5f, EaseOutCubic() );
 		}
 	}
 }
@@ -314,6 +316,7 @@ void DAMEApp::update()
 {
 	double now = getElapsedSeconds();
 	hideCursor();
+	camera.setEyePoint(cameraPos);
 	//camera.update(now - lastFrameTime);
 	/*boost::ptr_list<Animation>::iterator it;
 	for(it = animations.begin(); it != animations.end();){
