@@ -4,6 +4,7 @@ vc10/settings.ini
 #OS junk files
 [Tt]humbs.db
 *.DS_Store
+*~
 
 #Visual Studio files
 *.[Oo]bj
@@ -34,4 +35,11 @@ obj/
 [Rr]elease*/
 Ankh.NoLoad
 
+# Asset files
+assets/*
 !assets/*.obj
+!assets/noimage.png
+
+# MAME files
+vc10/cfg/
+vc10/nvram
