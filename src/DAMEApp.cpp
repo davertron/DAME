@@ -18,23 +18,27 @@
 #include <tchar.h>
 #include <sstream>
 #include <fstream>
+#include <iostream>
 
 #include <process.h>
 #include <Windows.h>
+#include <conio.h>
 
 #include "boost\program_options\parsers.hpp"
 #include "boost\program_options\variables_map.hpp"
 #include "boost\ptr_container\ptr_list.hpp"
-
+#include "boost\filesystem\config.hpp"
 
 using namespace ci;
 using namespace ci::app;
 using namespace std;
+namespace bfs = boost::filesystem;
 namespace po = boost::program_options;
 
 class DAMEApp : public AppBasic {
   public:
     void prepareSettings( Settings *settings );
+    int countFiles(const string &refcstrRootDirectory, const string &refcstrExtension, bool           bSubdirectories);
     void setup();
     void mouseDown( MouseEvent event );
     void keyDown( KeyEvent event );
@@ -102,78 +106,112 @@ void DAMEApp::setup()
     gameMode = CONSOLE_SELECT;
     currentConsole = 0;
 
-    gameNames.push_back("starwars");
-    gameTitles.push_back("Star Wars");
-    gameNames.push_back("rastan");
-    gameTitles.push_back("Rastan");
-    gameNames.push_back("galaxian");
-    gameTitles.push_back("Galaxian");
-    gameNames.push_back("zaxxon");
-    gameTitles.push_back("Zaxxon");
-    gameNames.push_back("sonicwi2");
-    gameTitles.push_back("Sonic Something");
-    gameNames.push_back("1942");
-    gameTitles.push_back("1942");
-    gameNames.push_back("combat");
-    gameTitles.push_back("Combat");
-    gameNames.push_back("gauntlet");
-    gameTitles.push_back("Gauntlet");
-    gameNames.push_back("gng");
-    gameTitles.push_back("Ghosts 'n Goblins");
-    gameNames.push_back("nemesis"); // gradius
-    gameTitles.push_back("Gradius");
-    gameNames.push_back("gunsmoke");
-    gameTitles.push_back("Gunsmoke");
-    gameNames.push_back("hangon");
-    gameTitles.push_back("Hangon");
-    gameNames.push_back("sharrier");
-    gameTitles.push_back("Space Harrier");
-    gameNames.push_back("astorm");
-    gameTitles.push_back("A Storm");
-    gameNames.push_back("aliens");
-    gameTitles.push_back("Aliens");
-    gameNames.push_back("ddragon3");
-    gameTitles.push_back("Double Dragon 3");
-    gameNames.push_back("msword");
-    gameTitles.push_back("Msword");
-    gameNames.push_back("mercs");
-    gameTitles.push_back("Mercs");
-    gameNames.push_back("pitfight");
-    gameTitles.push_back("Pit Fight");
-    gameNames.push_back("smashtv");
-    gameTitles.push_back("Smash TV");
-    gameNames.push_back("tmnt");
-    gameTitles.push_back("Teenage Mutant Ninja Turtles");
-    gameNames.push_back("btoads");
-    gameTitles.push_back("Battletoads");
-    gameNames.push_back("crusnusa");
-    gameTitles.push_back("Cruisin' USA");
-    gameNames.push_back("kinst");
-    gameTitles.push_back("Killer Instinct");
-    gameNames.push_back("mk3");
-    gameTitles.push_back("Mortal Kombat");
-    gameNames.push_back("tekken");
-    gameTitles.push_back("Tekken");
-    gameNames.push_back("kof94");
-    gameTitles.push_back("King of Fighters '94");
-    gameNames.push_back("xmcota");
-    gameTitles.push_back("Xmen: Children of the Atom");
-    gameNames.push_back("ffight");
-    gameTitles.push_back("Final Fight");
-    gameNames.push_back("goldnaxe");
-    gameTitles.push_back("Golden Axe");
-    gameNames.push_back("slyspy");
-    gameTitles.push_back("Sly Spy");
-    gameNames.push_back("strider");
-    gameTitles.push_back("Strider");
-    gameNames.push_back("aof");
-    gameTitles.push_back("AOF");
-    gameNames.push_back("nss_con3");
-    gameTitles.push_back("Contra 3");
-    gameNames.push_back("sf2ce");
-    gameTitles.push_back("Street Fighter 2 Championship Edition");
-    gameNames.push_back("xmen");
-    gameTitles.push_back("Xmen");
+    // Load mame path and mame rom path
+    po::variables_map configOptions;
+    // Setup options.
+    po::options_description desc("Options");
+    desc.add_options()
+        ("mamePath", po::value< string >( &mamePath ), "mamePath" )
+        ("romPath", po::value< string >( &romPath ), "romPath");
+
+    ifstream settings_file( "settings.ini" );
+    po::store( po::parse_config_file( settings_file , desc ), configOptions );
+    settings_file.close();
+    po::notify( configOptions );
+
+    bfs::path someDir(romPath.c_str());
+    bfs::directory_iterator end_iter;
+
+    // Search rom path for roms
+    if ( bfs::exists(someDir) && bfs::is_directory(someDir))
+    {
+      for( bfs::directory_iterator dir_iter(someDir) ; dir_iter != end_iter ; ++dir_iter)
+      {
+        if (bfs::is_regular_file(dir_iter->status()))
+        {
+            if(dir_iter->path().extension() == ".zip"){
+                string name = dir_iter->path().filename().string();
+                console() << "Found rom: " << name.substr(0, name.find(".zip")) << endl;
+                // TODO: Figure out how to get the game name...maybe lookup in a local db or xml file?
+                gameTitles.push_back("Blah");
+                gameNames.push_back(name.substr(0, name.find(".zip")));
+            }
+        }
+      }
+    }
+
+    //gameNames.push_back("starwars");
+    //gameTitles.push_back("Star Wars");
+    //gameNames.push_back("rastan");
+    //gameTitles.push_back("Rastan");
+    //gameNames.push_back("galaxian");
+    //gameTitles.push_back("Galaxian");
+    //gameNames.push_back("zaxxon");
+    //gameTitles.push_back("Zaxxon");
+    //gameNames.push_back("sonicwi2");
+    //gameTitles.push_back("Sonic Something");
+    //gameNames.push_back("1942");
+    //gameTitles.push_back("1942");
+    //gameNames.push_back("combat");
+    //gameTitles.push_back("Combat");
+    //gameNames.push_back("gauntlet");
+    //gameTitles.push_back("Gauntlet");
+    //gameNames.push_back("gng");
+    //gameTitles.push_back("Ghosts 'n Goblins");
+    //gameNames.push_back("nemesis"); // gradius
+    //gameTitles.push_back("Gradius");
+    //gameNames.push_back("gunsmoke");
+    //gameTitles.push_back("Gunsmoke");
+    //gameNames.push_back("hangon");
+    //gameTitles.push_back("Hangon");
+    //gameNames.push_back("sharrier");
+    //gameTitles.push_back("Space Harrier");
+    //gameNames.push_back("astorm");
+    //gameTitles.push_back("A Storm");
+    //gameNames.push_back("aliens");
+    //gameTitles.push_back("Aliens");
+    //gameNames.push_back("ddragon3");
+    //gameTitles.push_back("Double Dragon 3");
+    //gameNames.push_back("msword");
+    //gameTitles.push_back("Msword");
+    //gameNames.push_back("mercs");
+    //gameTitles.push_back("Mercs");
+    //gameNames.push_back("pitfight");
+    //gameTitles.push_back("Pit Fight");
+    //gameNames.push_back("smashtv");
+    //gameTitles.push_back("Smash TV");
+    //gameNames.push_back("tmnt");
+    //gameTitles.push_back("Teenage Mutant Ninja Turtles");
+    //gameNames.push_back("btoads");
+    //gameTitles.push_back("Battletoads");
+    //gameNames.push_back("crusnusa");
+    //gameTitles.push_back("Cruisin' USA");
+    //gameNames.push_back("kinst");
+    //gameTitles.push_back("Killer Instinct");
+    //gameNames.push_back("mk3");
+    //gameTitles.push_back("Mortal Kombat");
+    //gameNames.push_back("tekken");
+    //gameTitles.push_back("Tekken");
+    //gameNames.push_back("kof94");
+    //gameTitles.push_back("King of Fighters '94");
+    //gameNames.push_back("xmcota");
+    //gameTitles.push_back("Xmen: Children of the Atom");
+    //gameNames.push_back("ffight");
+    //gameTitles.push_back("Final Fight");
+    //gameNames.push_back("goldnaxe");
+    //gameTitles.push_back("Golden Axe");
+    //gameNames.push_back("slyspy");
+    //gameTitles.push_back("Sly Spy");
+    //gameNames.push_back("strider");
+    //gameTitles.push_back("Strider");
+    //gameNames.push_back("aof");
+    //gameTitles.push_back("AOF");
+    //gameNames.push_back("nss_con3");
+    //gameTitles.push_back("Contra 3");
+    //gameNames.push_back("sf2ce");
+    //gameTitles.push_back("Street Fighter 2 Championship Edition");
+    //gameNames.push_back("xmen");
+    //gameTitles.push_back("Xmen");
 
     unsigned int i = 0;
     for(; i < gameNames.size(); i++){
@@ -208,19 +246,6 @@ void DAMEApp::setup()
     cameraPos = centerOfFirstGame + Vec3f(0.0f, 0.0f, -500.0f);
     camera.lookAt(cameraPos, getCenterOfCurrentGame(), -1*Vec3f::yAxis());
 
-    // Load mame path and mame rom path
-    po::variables_map configOptions;
-    // Setup options.
-    po::options_description desc("Options");
-    desc.add_options()
-        ("mamePath", po::value< std::string >( &mamePath ), "mamePath" )
-        ("romPath", po::value< std::string >( &romPath ), "romPath");
-
-    std::ifstream settings_file( "settings.ini" );
-    po::store( po::parse_config_file( settings_file , desc ), configOptions );
-    settings_file.close();
-    po::notify( configOptions );
-
     lastFrameTime = getElapsedSeconds();
 
     // Load Consoles
@@ -246,11 +271,11 @@ void DAMEApp::setup()
         phongShader = gl::GlslProg( loadAsset( "phong_vert.glsl" ), loadAsset( "phong_frag.glsl" ) );
     }
     catch( gl::GlslProgCompileExc &exc ) {
-        console() << "Shader compile error: " << std::endl;
+        console() << "Shader compile error: " << endl;
         console() << exc.what();
     }
     catch( ... ) {
-        console() << "Unable to load shader" << std::endl;
+        console() << "Unable to load shader" << endl;
     }
 
     format.enableMipmapping(false);
@@ -665,7 +690,7 @@ void DAMEApp::runSelectedGame(){
     wstringstream ss;
 
     console() << "Mame path: " << mamePath.c_str() << endl << endl;
-    ss << mamePath.c_str() << "/mame.exe -rompath " << romPath.c_str() << " 1945kiii";
+    ss << mamePath.c_str() << "/mame.exe -rompath " << romPath.c_str() << " " << gameNames[currentGameIndex].c_str();
     wstring mame = ss.str();
 
     // We have to drop out of full screen to run mame
