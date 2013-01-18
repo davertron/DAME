@@ -56,24 +56,23 @@ class DAMEApp : public AppBasic {
     int gameMode;
 
     int CONSOLES[2];
-    int currentConsole;
 
     CameraPersp camera;
     CameraPersp backgroundCamera;
     Anim<Vec3f> cameraPos;
-    Vec3f backgroundCameraPos;
+    Anim<Vec3f> backgroundCameraPos;
+    Anim<Vec3f> backgroundCameraLookAt;
     unsigned int currentGameIndex;
+    unsigned int currentConsoleIndex;
     double lastFrameTime;
 
     vector<string> gameNames;
     vector<string> gameTitles;
     vector<Game> games;
+    vector<Console> consoles;
 
     string mamePath;
     string romPath;
-
-    Console MAME;
-    Console SNES;
 
     // Shaders for Toon Shading of background
     gl::GlslProg depthShader;
@@ -104,7 +103,6 @@ void DAMEApp::prepareSettings( Settings *settings )
 void DAMEApp::setup()
 {
     gameMode = CONSOLE_SELECT;
-    currentConsole = 0;
 
     // Load mame path and mame rom path
     po::variables_map configOptions;
@@ -182,11 +180,13 @@ void DAMEApp::setup()
     }
 
     currentGameIndex = 0;
+    currentConsoleIndex = 0;
 
     camera.setPerspective(60.0f, getWindowAspectRatio(), 5.0f, 5000.0f);
     backgroundCamera.setPerspective(60.0f, getWindowAspectRatio(), 5.0f, 5000.0f);
     backgroundCameraPos = Vec3f(0.0f, 0.0f, -1000.0f);
-    backgroundCamera.lookAt(backgroundCameraPos, Vec3f::zero(), -1*Vec3f::yAxis());
+    backgroundCameraLookAt = Vec3f::zero();
+    backgroundCamera.lookAt(backgroundCameraPos, backgroundCameraLookAt, -1*Vec3f::yAxis());
 
     Vec3f centerOfFirstGame = getCenterOfCurrentGame();
     cameraPos = centerOfFirstGame + Vec3f(0.0f, 0.0f, -500.0f);
@@ -195,15 +195,21 @@ void DAMEApp::setup()
     lastFrameTime = getElapsedSeconds();
 
     // Load Consoles
+    Console MAME;
     MAME.setAsset("cab.obj");
     MAME.initialize();
     MAME.setRotation(-40.0f);
     MAME.setScale(175.0f);
+    MAME.setPosition(Vec3f::zero());
+    consoles.push_back(MAME);
 
+    Console SNES;
     SNES.setAsset("snes.obj");
     SNES.initialize();
     SNES.setRotation(40.0f);
     SNES.setScale(150.0f);
+    SNES.setPosition(Vec3f(650.0f, 0.0f, 0.0f));
+    consoles.push_back(SNES);
 
     // Setup our fbos and shaders
     try {
@@ -251,17 +257,22 @@ void DAMEApp::keyDown( KeyEvent event ) {
         if( event.getCode() == KeyEvent::KEY_ESCAPE ){
             quit();
         } else if(event.getCode() == KeyEvent::KEY_RIGHT){
-            if(currentConsole < 1){
-                currentConsole++;
+            if(currentConsoleIndex < consoles.size()-1){
+                currentConsoleIndex++;
                 changedConsole = true;
             }
         } else if(event.getCode() == KeyEvent::KEY_LEFT){
-            if(currentConsole != 0){
-                currentConsole--;
+            if(currentConsoleIndex != 0){
+                currentConsoleIndex--;
                 changedConsole = true;
             }
         } else if(event.getCode() == KeyEvent::KEY_RETURN){
             gameMode = GAME_SELECT;
+        }
+
+        if(changedConsole){
+            timeline().apply( &backgroundCameraPos, Vec3f(consoles[currentConsoleIndex].getPosition().x, backgroundCameraPos().y, backgroundCameraPos().z), 0.5f, EaseOutCubic() );
+            timeline().apply( &backgroundCameraLookAt, consoles[currentConsoleIndex].getPosition(), 0.5f, EaseOutCubic());
         }
     } else if(gameMode == GAME_SELECT){
         bool changedGame = false;
@@ -297,7 +308,7 @@ void DAMEApp::update()
     //backgroundCameraPos = Vec3f(sin(lessNow + cos(lessNow * 0.83)) * 300.0 + 300.0, sin(lessNow + cos(lessNow * 0.73)) * 500.0 - 500.0, sin(lessNow + cos(lessNow * 0.41)) * 500.0 - 1000.0);
     backgroundCamera.setEyePoint(backgroundCameraPos);
     // NOTE: Should be looking at "currentConsole" once it exists...
-    backgroundCamera.lookAt(backgroundCameraPos, Vec3f::zero(), -1*Vec3f::yAxis());
+    backgroundCamera.lookAt(backgroundCameraPos, backgroundCameraLookAt, -1*Vec3f::yAxis());
     //camera.update(now - lastFrameTime);
     /*boost::ptr_list<Animation>::iterator it;
     for(it = animations.begin(); it != animations.end();){
@@ -355,18 +366,7 @@ void DAMEApp::drawGrid()
 }
 
 void DAMEApp::drawBackground(){
-    Vec3f cabinetPosition;
-    Vec3f snesPosition;
-
-    if(gameMode == CONSOLE_SELECT){
-        cabinetPosition = Vec3f::zero();
-        snesPosition = Vec3f(650.0f, 0.0f, 0.0f);
-    } else {
-        //cabinetPosition = Vec3f(getWindowWidth()/-8.0f, getWindowHeight()/9.0f, 0.0f);
-        cabinetPosition = Vec3f::zero();
-        snesPosition = Vec3f(5000.0f, 0.0f, 0.0f);
-    }
-
+    unsigned int i = 0;
     gl::pushMatrices();
     // Render depth info to a texture
     gl::color(Color::white());
@@ -376,20 +376,15 @@ void DAMEApp::drawBackground(){
         gl::clear(Color::black(), true);
 
         depthShader.bind();
-            gl::pushMatrices();
-                gl::setMatrices(backgroundCamera);
-                gl::translate(cabinetPosition);
-                gl::rotate(Vec3f(180.0, MAME.getRotation(), 0.0));
-                gl::scale(MAME.getScale(), MAME.getScale(), MAME.getScale());
-                gl::draw(MAME.getMesh());
-            gl::popMatrices();
-            gl::pushMatrices();
-                gl::setMatrices(backgroundCamera);
-                gl::translate(snesPosition);
-                gl::rotate(Vec3f(180.0, SNES.getRotation(), 0.0));
-                gl::scale(SNES.getScale(), SNES.getScale(), SNES.getScale());
-                gl::draw(SNES.getMesh());
-            gl::popMatrices();
+            for(i=0; i < consoles.size(); i++){
+                gl::pushMatrices();
+                    gl::setMatrices(backgroundCamera);
+                    gl::translate(consoles[i].getPosition());
+                    gl::rotate(Vec3f(180.0, consoles[i].getRotation(), 0.0));
+                    gl::scale(consoles[i].getScale(), consoles[i].getScale(), consoles[i].getScale());
+                    gl::draw(consoles[i].getMesh());
+                gl::popMatrices();
+            }
         depthShader.unbind();
     depthBuffer.unbindFramebuffer();
 
@@ -423,20 +418,16 @@ void DAMEApp::drawBackground(){
         gl::clear(Color::black(), true);
 
         normalShader.bind();
-            gl::pushMatrices();
-                gl::setMatrices(backgroundCamera);
-                gl::translate(cabinetPosition);
-                gl::rotate(Vec3f(180.0, MAME.getRotation(), 0.0));
-                gl::scale(MAME.getScale(), MAME.getScale(), MAME.getScale());
-                gl::draw(MAME.getMesh());
-            gl::popMatrices();
-            gl::pushMatrices();
-                gl::setMatrices(backgroundCamera);
-                gl::translate(snesPosition);
-                gl::rotate(Vec3f(180.0, SNES.getRotation(), 0.0));
-                gl::scale(SNES.getScale(), SNES.getScale(), SNES.getScale());
-                gl::draw(SNES.getMesh());
-            gl::popMatrices();
+            i = 0;
+            for(i=0; i < consoles.size(); i++){
+                gl::pushMatrices();
+                    gl::setMatrices(backgroundCamera);
+                    gl::translate(consoles[i].getPosition());
+                    gl::rotate(Vec3f(180.0, consoles[i].getRotation(), 0.0));
+                    gl::scale(consoles[i].getScale(), consoles[i].getScale(), consoles[i].getScale());
+                    gl::draw(consoles[i].getMesh());
+                gl::popMatrices();
+            }
         normalShader.unbind();
     normalBuffer.unbindFramebuffer();
 
@@ -518,21 +509,16 @@ void DAMEApp::drawBackground(){
         phongShader.uniform("lightPosition", Vec3f(30.0f, 100.0f, 50.0f));
         phongShader.uniform("attenuationFactor", 0.0000007f);
 
-        gl::pushMatrices();
-            gl::setMatrices(backgroundCamera);
-            gl::color(Color::white());
-            gl::translate(cabinetPosition);
-            gl::rotate(Vec3f(180.0, MAME.getRotation(), 0.0));
-            gl::scale(MAME.getScale(), MAME.getScale(), MAME.getScale());
-            gl::draw(MAME.getMesh());
-        gl::popMatrices();
-        gl::pushMatrices();
+        i = 0;
+        for(i=0; i < consoles.size(); i++){
+            gl::pushMatrices();
                 gl::setMatrices(backgroundCamera);
-                gl::translate(snesPosition);
-                gl::rotate(Vec3f(180.0, SNES.getRotation(), 0.0));
-                gl::scale(SNES.getScale(), SNES.getScale(), SNES.getScale());
-                gl::draw(SNES.getMesh());
+                gl::translate(consoles[i].getPosition());
+                gl::rotate(Vec3f(180.0, consoles[i].getRotation(), 0.0));
+                gl::scale(consoles[i].getScale(), consoles[i].getScale(), consoles[i].getScale());
+                gl::draw(consoles[i].getMesh());
             gl::popMatrices();
+        }
         phongShader.unbind();
     shadedModelBuffer.unbindFramebuffer();
 
