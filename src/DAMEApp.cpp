@@ -9,6 +9,7 @@
 #include "cinder/gl/GlslProg.h"
 #include "cinder/gl/Fbo.h"
 #include "cinder/Text.h"
+#include "cinder/Xml.h"
 #include "Resources.h"
 #include "cinder/Utilities.h"
 //#include "Resources.h"
@@ -38,7 +39,6 @@ namespace po = boost::program_options;
 class DAMEApp : public AppBasic {
   public:
     void prepareSettings( Settings *settings );
-    int countFiles(const string &refcstrRootDirectory, const string &refcstrExtension, bool           bSubdirectories);
     void setup();
     void mouseDown( MouseEvent event );
     void keyDown( KeyEvent event );
@@ -122,6 +122,18 @@ void DAMEApp::setup()
     bfs::path someDir(romPath.c_str());
     bfs::directory_iterator end_iter;
 
+    // Load xml file to use as title lookup
+    double start = getElapsedSeconds();
+
+    console() << endl << endl << "Loading mame game info from " << mamePath + "/mygames_test.xml" << "..." << endl << endl;
+    XmlTree mameInfo(loadAsset("names-to-titles.xml"));
+
+    double minutesToParse = getElapsedSeconds() - start / 60.0;
+    console() << endl << endl << "Mame info loaded (took " << minutesToParse << " minutes)." << endl << endl;
+
+    start = getElapsedSeconds();
+    console() << endl << endl << "Loading games..." << endl << endl;
+
     // Search rom path for roms
     if ( bfs::exists(someDir) && bfs::is_directory(someDir))
     {
@@ -131,95 +143,30 @@ void DAMEApp::setup()
         {
             if(dir_iter->path().extension() == ".zip"){
                 string name = dir_iter->path().filename().string();
-                console() << "Found rom: " << name.substr(0, name.find(".zip")) << endl;
-                // TODO: Figure out how to get the game name...maybe lookup in a local db or xml file?
-                gameTitles.push_back("Blah");
-                gameNames.push_back(name.substr(0, name.find(".zip")));
+                name = name.substr(0, name.find(".zip"));
+                console() << "Found rom: " << name << endl;
+
+                string title = name;
+
+                for( XmlTree::Iter game = mameInfo.begin("games/game"); game != mameInfo.end(); ++game ){
+                    if(game->getAttributeValue<string>("name") == name){
+                        title = game->getValue();
+                        break;
+                    }
+                }
+                gameTitles.push_back(title);
+                gameNames.push_back(name);
             }
         }
       }
     }
 
-    //gameNames.push_back("starwars");
-    //gameTitles.push_back("Star Wars");
-    //gameNames.push_back("rastan");
-    //gameTitles.push_back("Rastan");
-    //gameNames.push_back("galaxian");
-    //gameTitles.push_back("Galaxian");
-    //gameNames.push_back("zaxxon");
-    //gameTitles.push_back("Zaxxon");
-    //gameNames.push_back("sonicwi2");
-    //gameTitles.push_back("Sonic Something");
-    //gameNames.push_back("1942");
-    //gameTitles.push_back("1942");
-    //gameNames.push_back("combat");
-    //gameTitles.push_back("Combat");
-    //gameNames.push_back("gauntlet");
-    //gameTitles.push_back("Gauntlet");
-    //gameNames.push_back("gng");
-    //gameTitles.push_back("Ghosts 'n Goblins");
-    //gameNames.push_back("nemesis"); // gradius
-    //gameTitles.push_back("Gradius");
-    //gameNames.push_back("gunsmoke");
-    //gameTitles.push_back("Gunsmoke");
-    //gameNames.push_back("hangon");
-    //gameTitles.push_back("Hangon");
-    //gameNames.push_back("sharrier");
-    //gameTitles.push_back("Space Harrier");
-    //gameNames.push_back("astorm");
-    //gameTitles.push_back("A Storm");
-    //gameNames.push_back("aliens");
-    //gameTitles.push_back("Aliens");
-    //gameNames.push_back("ddragon3");
-    //gameTitles.push_back("Double Dragon 3");
-    //gameNames.push_back("msword");
-    //gameTitles.push_back("Msword");
-    //gameNames.push_back("mercs");
-    //gameTitles.push_back("Mercs");
-    //gameNames.push_back("pitfight");
-    //gameTitles.push_back("Pit Fight");
-    //gameNames.push_back("smashtv");
-    //gameTitles.push_back("Smash TV");
-    //gameNames.push_back("tmnt");
-    //gameTitles.push_back("Teenage Mutant Ninja Turtles");
-    //gameNames.push_back("btoads");
-    //gameTitles.push_back("Battletoads");
-    //gameNames.push_back("crusnusa");
-    //gameTitles.push_back("Cruisin' USA");
-    //gameNames.push_back("kinst");
-    //gameTitles.push_back("Killer Instinct");
-    //gameNames.push_back("mk3");
-    //gameTitles.push_back("Mortal Kombat");
-    //gameNames.push_back("tekken");
-    //gameTitles.push_back("Tekken");
-    //gameNames.push_back("kof94");
-    //gameTitles.push_back("King of Fighters '94");
-    //gameNames.push_back("xmcota");
-    //gameTitles.push_back("Xmen: Children of the Atom");
-    //gameNames.push_back("ffight");
-    //gameTitles.push_back("Final Fight");
-    //gameNames.push_back("goldnaxe");
-    //gameTitles.push_back("Golden Axe");
-    //gameNames.push_back("slyspy");
-    //gameTitles.push_back("Sly Spy");
-    //gameNames.push_back("strider");
-    //gameTitles.push_back("Strider");
-    //gameNames.push_back("aof");
-    //gameTitles.push_back("AOF");
-    //gameNames.push_back("nss_con3");
-    //gameTitles.push_back("Contra 3");
-    //gameNames.push_back("sf2ce");
-    //gameTitles.push_back("Street Fighter 2 Championship Edition");
-    //gameNames.push_back("xmen");
-    //gameTitles.push_back("Xmen");
+    minutesToParse = getElapsedSeconds() - start / 60.0;
+    console() << endl << endl << "Games loaded (took " << minutesToParse << " minutes)." << endl << endl;
 
     unsigned int i = 0;
     for(; i < gameNames.size(); i++){
-       try {
-          games.push_back(Game(gameNames[i]));
-       } catch(...){
-          console() << "Failed to load image for " << gameNames[i] << endl;
-       }
+      games.push_back(Game(gameNames[i]));
     }
 
     const int gap = 20;
@@ -231,7 +178,6 @@ void DAMEApp::setup()
             xPosition = -1*games[i].getImage().getWidth() / 2;
         }
         games[i].setPosition(Vec3f((float)xPosition, (float)(-1.0 * games[i].getImage().getHeight() / 2), 0.0));
-        //games[i].setTitleFont(Font( loadResource( RES_CHUNKFIVE_FONT ), 48));
         games[i].setTitle(gameTitles[i]);
     }
 
@@ -636,11 +582,6 @@ void DAMEApp::drawLine(){
                     gl::translate(0.0, 0.0, 1.0);
                     gl::drawSolidRect(Rectf(games[i].getPosition().x-borderSize, games[i].getPosition().y-borderSize, games[i].getPosition().x + games[i].getImage().getWidth()+borderSize, games[i].getPosition().y + games[i].getImage().getHeight()+borderSize), false);
                     gl::popMatrices();
-                    gl::enableAlphaBlending();
-                    games[i].getRenderedTitle().enableAndBind();
-                    gl::draw(games[i].getRenderedTitle(), Vec2f(games[i].getPosition().x + games[i].getImageWidth()/2 - games[i].getRenderedTitle().getWidth()/2, games[i].getPosition().y+games[i].getImageHeight()+25));
-                    games[i].getRenderedTitle().unbind();
-                    gl::disableAlphaBlending();
                 }
                 games[i].enableAndBindImage();
                 gl::draw(games[i].getImage(), Vec2f(games[i].getPosition().x, games[i].getPosition().y));
@@ -663,11 +604,21 @@ void DAMEApp::drawLine(){
         passThruShader.unbind();
     gl::popModelView();
 
+    // Draw game title
+    gl::pushModelView();
+        gl::translate(Vec2f(getWindowWidth()/2.0f - games[currentGameIndex].getRenderedTitle().getWidth()/2.0f, getWindowHeight()-games[currentGameIndex].getRenderedTitle().getHeight() - 20.0f));
+        gl::enableAlphaBlending();
+        games[currentGameIndex].getRenderedTitle().enableAndBind();
+        gl::draw(games[currentGameIndex].getRenderedTitle());
+        games[currentGameIndex].getRenderedTitle().unbind();
+        gl::disableAlphaBlending();
+    gl::popModelView();
+
     // Draw FPS counter
     gl::pushModelView();
         gl::translate(Vec2f(getWindowWidth() - 100.0f, 50.0f));
         TextLayout layout;
-        layout.setFont(Font( loadResource( RES_AKASHI_FONT ), 30));
+        layout.setFont(Font( loadResource( RES_AKASHI_FONT ), 48));
         layout.setColor( Color( 1.0f, 1.0f, 1.0f) );
         layout.clear(ColorA(0.0f, 0.0f, 0.0f, 0.0f));
         layout.addCenteredLine(toString((int)getAverageFps()));
@@ -710,10 +661,10 @@ void DAMEApp::runSelectedGame(){
     )
     {
         console() << "CreateProcess failed: " << GetLastError() << endl << endl;
-    setFullScreen(true);
-    return;
+        setFullScreen(true);
+        return;
     } else {
-    console() << "Created process, you should see mame right now" << endl;
+        console() << "Created process, you should see mame right now" << endl;
     }
 
     // Wait until child process exits.

@@ -31,11 +31,15 @@ Game::Game(string _filename){
             downloaded = true;
         } catch(...){
             console() << "Could not download rom image for " << filename << " , using 'noimage.png'." << endl;
-            // Use the 'no image' image...
-            imageAssetRef = loadAsset("noimage.png");
         }
     }
-	image = gl::Texture(loadImage(imageAssetRef));
+    try {
+        image = gl::Texture(loadImage(imageAssetRef));
+    } catch(...){
+        // Use the 'no image' image...
+        imageAssetRef = loadAsset("noimage.png");
+        image = gl::Texture(loadImage(imageAssetRef));
+    }
 
     if(!errorFindingImage){
         console() << "Found image for " << filename << " in assets dir." << endl;

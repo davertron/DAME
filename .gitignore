@@ -39,6 +39,7 @@ Ankh.NoLoad
 assets/*
 !assets/*.obj
 !assets/noimage.png
+!assets/names-to-titles.xml
 
 # MAME files
 vc10/cfg/
