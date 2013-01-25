@@ -26,8 +26,8 @@ Vec3f MenuObject::getPosition(){
 void MenuObject::setTitle(string tit){
 	title = tit;
 	TextLayout layout;
-	layout.setFont(Font( loadResource( RES_AKASHI_FONT ), 48));
-	layout.setColor( Color( 1.0f, 1.0f, 1.0f) );
+	layout.setFont(Font(loadAsset("ArcadeClassic.ttf"), 60));
+	layout.setColor(Color( 1.0f, 1.0f, 1.0f) );
 	layout.clear(ColorA(1.0f, 1.0f, 1.0f, 0.0f));
 	layout.addCenteredLine(title);
 	renderedTitle = gl::Texture(layout.render(true, true));

@@ -201,6 +201,7 @@ void DAMEApp::setup()
     MAME.setRotation(-40.0f);
     MAME.setScale(175.0f);
     MAME.setPosition(Vec3f::zero());
+    MAME.setTitle("MAME");
     consoles.push_back(MAME);
 
     Console SNES;
@@ -209,6 +210,7 @@ void DAMEApp::setup()
     SNES.setRotation(40.0f);
     SNES.setScale(150.0f);
     SNES.setPosition(Vec3f(650.0f, 0.0f, 0.0f));
+    SNES.setTitle("SNES");
     consoles.push_back(SNES);
 
     // Setup our fbos and shaders
@@ -552,10 +554,10 @@ void DAMEApp::drawLine(){
     gl::clear(Color::black(), true);
     drawBackground();
 
+    gl::disableDepthRead();
+    gl::disableDepthWrite();
     if(gameMode == GAME_SELECT){
         // Draw foreground to the same texture as background
-        gl::disableDepthRead();
-        gl::disableDepthWrite();
         gl::pushMatrices();
             gl::setMatrices(camera);
             depthBuffer.bindFramebuffer();
@@ -590,15 +592,47 @@ void DAMEApp::drawLine(){
         passThruShader.unbind();
     gl::popModelView();
 
-    // Draw game title
-    gl::pushModelView();
-        gl::translate(Vec2f(getWindowWidth()/2.0f - games[currentGameIndex].getRenderedTitle().getWidth()/2.0f, getWindowHeight()-games[currentGameIndex].getRenderedTitle().getHeight() - 20.0f));
-        gl::enableAlphaBlending();
-        games[currentGameIndex].getRenderedTitle().enableAndBind();
-        gl::draw(games[currentGameIndex].getRenderedTitle());
-        games[currentGameIndex].getRenderedTitle().unbind();
-        gl::disableAlphaBlending();
-    gl::popModelView();
+    if(gameMode == GAME_SELECT){
+        // Draw game title
+        gl::pushModelView();
+            int borderSize = 4;
+            int gameTitleWidth = games[currentGameIndex].getRenderedTitle().getWidth();
+            int gameTitleLeft = getWindowWidth()/2.0f - gameTitleWidth/2.0f;
+            int gameTitleHeight = games[currentGameIndex].getRenderedTitle().getHeight();
+            int gameTitleTop = getWindowHeight() - gameTitleHeight;
+
+            gl::color(Color::black());
+            gl::drawSolidRect( Rectf(Vec2f(gameTitleLeft-borderSize, gameTitleTop), Vec2f(gameTitleLeft+gameTitleWidth+borderSize, getWindowHeight())));
+            gl::color(Color::white());
+
+            gl::translate(Vec2f(gameTitleLeft, gameTitleTop));
+            gl::enableAlphaBlending();
+            games[currentGameIndex].getRenderedTitle().enableAndBind();
+            gl::draw(games[currentGameIndex].getRenderedTitle());
+            games[currentGameIndex].getRenderedTitle().unbind();
+            gl::disableAlphaBlending();
+        gl::popModelView();
+    } else {
+        // Draw console title
+        gl::pushModelView();
+            int borderSize = 4;
+            int titleWidth = consoles[currentConsoleIndex].getRenderedTitle().getWidth();
+            int titleLeft = getWindowWidth()/2.0f - titleWidth/2.0f;
+            int titleHeight = consoles[currentConsoleIndex].getRenderedTitle().getHeight();
+            int titleTop = getWindowHeight() - titleHeight;
+
+            gl::color(Color::black());
+            gl::drawSolidRect( Rectf(Vec2f(titleLeft-borderSize, titleTop), Vec2f(titleLeft+titleWidth+borderSize, getWindowHeight())));
+            gl::color(Color::white());
+
+            gl::translate(Vec2f(titleLeft,titleTop));
+            gl::enableAlphaBlending();
+            consoles[currentConsoleIndex].getRenderedTitle().enableAndBind();
+            gl::draw(consoles[currentConsoleIndex].getRenderedTitle());
+            consoles[currentConsoleIndex].getRenderedTitle().unbind();
+            gl::disableAlphaBlending();
+        gl::popModelView();
+    }
 
     // Draw FPS counter
     gl::pushModelView();
